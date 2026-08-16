@@ -10,6 +10,9 @@ Read the code before taking any of this on faith. The behavior described below i
 
 ![Demo](demo/media/demo2.gif)
 
+![Demo](demo/media/demo3.gif)
+
+
 ## What problem this solves
 
 Traditional object detectors are trained against a fixed, closed set of classes. If a class was not in the training data, the model has no way to detect it. This project takes a different approach.
