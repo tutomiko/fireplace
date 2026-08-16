@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fireplace Test Harness</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+  }
+  .container {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+  }
+  .image-pane {
+    position: relative;
+    height: 100%;
+    width: 50%;
+    overflow: hidden;
+  }
+  .image-pane img {
+    height: 100%;
+    width: 100%;
+    object-fit: cover;
+    display: block;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .image-pane canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 100%;
+    cursor: crosshair;
+  }
+  #heatmap-canvas {
+    cursor: default;
+    pointer-events: none;
+  }
+  .controls {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    font-family: sans-serif;
+  }
+  .controls button {
+    padding: 6px 14px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .slider-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+  }
+  .slider-group input[type="range"] {
+    width: 140px;
+  }
+  .slider-group .slider-value {
+    min-width: 34px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="image-pane" id="left-pane">
+      <img src="/static/left.png" alt="left" id="left-img">
+      <canvas id="lasso-canvas"></canvas>
+    </div>
+    <div class="image-pane" id="right-pane">
+      <img src="/static/right.png" alt="right" id="right-img">
+      <canvas id="heatmap-canvas"></canvas>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="clear-btn">Clear</button>
+    <div class="slider-group">
+      <label for="decay-slider">Decay</label>
+      <input type="range" id="decay-slider" min="0" max="1" step="0.01" value="0.01">
+      <span class="slider-value" id="decay-value">0.01</span>
+    </div>
+    <div class="slider-group">
+      <label for="decay-threshold-slider">Decay threshold</label>
+      <input type="range" id="decay-threshold-slider" min="0" max="1" step="0.01" value="0.20">
+      <span class="slider-value" id="decay-threshold-value">0.20</span>
+    </div>
+  </div>
+
+  <script>
+    const pane = document.getElementById('left-pane');
+    const img = document.getElementById('left-img');
+    const canvas = document.getElementById('lasso-canvas');
+    const ctx = canvas.getContext('2d');
+    const clearBtn = document.getElementById('clear-btn');
+    const decaySlider = document.getElementById('decay-slider');
+    const decayValue = document.getElementById('decay-value');
+    const decayThresholdSlider = document.getElementById('decay-threshold-slider');
+    const decayThresholdValue = document.getElementById('decay-threshold-value');
+
+    const rightPane = document.getElementById('right-pane');
+    const rightImg = document.getElementById('right-img');
+    const heatmapCanvas = document.getElementById('heatmap-canvas');
+    const heatmapCtx = heatmapCanvas.getContext('2d');
+
+    let lassos = []; // array of { points: [{x,y}, ...] } in canvas pixel coords, naturalPoints: [{x,y}, ...] in left.png natural pixel coords
+    let currentPoints = [];
+    let drawing = false;
+    let lastHeatmapData = null;
+
+    function resizeCanvas() {
+      canvas.width = pane.clientWidth;
+      canvas.height = pane.clientHeight;
+      redraw();
+    }
+
+    function redraw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#ff3b30';
+      ctx.fillStyle = 'rgba(255, 59, 48, 0.2)';
+
+      for (const lasso of lassos) {
+        drawPolygon(lasso.points, true);
+      }
+      if (drawing && currentPoints.length > 1) {
+        drawPolygon(currentPoints, false);
+      }
+    }
+
+    function drawPolygon(points, closed) {
+      if (points.length < 2) return;
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+      if (closed) {
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.stroke();
+    }
+
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+      drawing = true;
+      currentPoints = [getPos(e)];
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (!drawing) return;
+      currentPoints.push(getPos(e));
+      redraw();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (!drawing) return;
+      drawing = false;
+      if (currentPoints.length > 2) {
+        const mapping = getCoverMapping();
+        const naturalPoints = currentPoints.map(p => mapping.toNatural(p.x, p.y));
+        lassos.push({ points: currentPoints, naturalPoints });
+        runFireplace();
+      }
+      currentPoints = [];
+      redraw();
+    });
+
+    function getCoverMapping() {
+      const boxW = canvas.width;
+      const boxH = canvas.height;
+      const natW = img.naturalWidth;
+      const natH = img.naturalHeight;
+
+      const scale = Math.max(boxW / natW, boxH / natH);
+      const drawnW = natW * scale;
+      const drawnH = natH * scale;
+      const offsetX = (boxW - drawnW) / 2;
+      const offsetY = (boxH - drawnH) / 2;
+
+      return {
+        toNatural(x, y) {
+          return {
+            x: (x - offsetX) / scale,
+            y: (y - offsetY) / scale,
+          };
+        },
+      };
+    }
+
+    let runToken = 0;
+    let sliderDebounceTimer = null;
+
+    clearBtn.addEventListener('click', () => {
+      lassos = [];
+      currentPoints = [];
+      drawing = false;
+      redraw();
+      runToken++;
+      clearTimeout(sliderDebounceTimer);
+      lastHeatmapData = null;
+      heatmapCtx.clearRect(0, 0, heatmapCanvas.width, heatmapCanvas.height);
+    });
+
+    function resizeHeatmapCanvas() {
+      heatmapCanvas.width = rightPane.clientWidth;
+      heatmapCanvas.height = rightPane.clientHeight;
+      if (lastHeatmapData) {
+        renderHeatmap(lastHeatmapData);
+      }
+    }
+
+    function getRightCoverMapping() {
+      const boxW = heatmapCanvas.width;
+      const boxH = heatmapCanvas.height;
+      const natW = rightImg.naturalWidth;
+      const natH = rightImg.naturalHeight;
+
+      const scale = Math.max(boxW / natW, boxH / natH);
+      const drawnW = natW * scale;
+      const drawnH = natH * scale;
+      const offsetX = (boxW - drawnW) / 2;
+      const offsetY = (boxH - drawnH) / 2;
+
+      return { scale, offsetX, offsetY, drawnW, drawnH };
+    }
+
+    async function runFireplace() {
+      if (lassos.length === 0) return;
+      runToken++;
+      const thisRun = runToken;
+
+      const payload = {
+        lassos: lassos.map(l => l.naturalPoints.map(p => [p.x, p.y])),
+        decay: parseFloat(decaySlider.value),
+        decay_threshold: parseFloat(decayThresholdSlider.value),
+      };
+
+      let response;
+      try {
+        response = await fetch('/heatmap', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } catch (err) {
+        alert(err.message || String(err));
+        return;
+      }
+      if (thisRun !== runToken) return;
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        alert(err.detail || `Request failed: ${response.status}`);
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (thisRun !== runToken) {
+          reader.cancel();
+          return;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop();
+
+        for (const rawEvent of events) {
+          if (!rawEvent.startsWith('data: ')) continue;
+          const jsonStr = rawEvent.slice('data: '.length);
+          if (!jsonStr || jsonStr === '{}') continue;
+          const frame = JSON.parse(jsonStr);
+          if (thisRun === runToken) {
+            renderHeatmap(frame);
+          }
+        }
+      }
+    }
+
+    function renderHeatmap(data) {
+      lastHeatmapData = data;
+      const { width: natW, height: natH, mask } = data;
+
+      const offscreen = document.createElement('canvas');
+      offscreen.width = natW;
+      offscreen.height = natH;
+      const offCtx = offscreen.getContext('2d');
+      const imageData = offCtx.createImageData(natW, natH);
+      for (let y = 0; y < natH; y++) {
+        const row = mask[y];
+        for (let x = 0; x < natW; x++) {
+          const v = row[x];
+          const idx = (y * natW + x) * 4;
+          imageData.data[idx] = 255;
+          imageData.data[idx + 1] = Math.max(0, 140 - v);
+          imageData.data[idx + 2] = 0;
+          imageData.data[idx + 3] = v;
+        }
+      }
+
+      offCtx.putImageData(imageData, 0, 0);
+
+      const { offsetX, offsetY, drawnW, drawnH } = getRightCoverMapping();
+      heatmapCtx.clearRect(0, 0, heatmapCanvas.width, heatmapCanvas.height);
+      heatmapCtx.drawImage(
+        offscreen,
+        0, 0, natW, natH,
+        offsetX, offsetY, drawnW, drawnH
+      );
+    }
+
+    function scheduleRerunFromSliders() {
+      if (lassos.length === 0) return;
+      clearTimeout(sliderDebounceTimer);
+      sliderDebounceTimer = setTimeout(runFireplace, 150);
+    }
+
+    decaySlider.addEventListener('input', () => {
+      decayValue.textContent = parseFloat(decaySlider.value).toFixed(2);
+      scheduleRerunFromSliders();
+    });
+
+    decayThresholdSlider.addEventListener('input', () => {
+      decayThresholdValue.textContent = parseFloat(decayThresholdSlider.value).toFixed(2);
+      scheduleRerunFromSliders();
+    });
+
+    if (img.complete) {
+      resizeCanvas();
+    } else {
+      img.addEventListener('load', resizeCanvas);
+    }
+    if (rightImg.complete) {
+      resizeHeatmapCanvas();
+    } else {
+      rightImg.addEventListener('load', resizeHeatmapCanvas);
+    }
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      resizeHeatmapCanvas();
+    });
+  </script>
+</body>
+</html>
