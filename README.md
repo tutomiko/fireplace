@@ -42,11 +42,11 @@ The algorithm is organized around three stages, each named for a physical proces
 
 **Dissipation.** The heat map is progressively cooled. A floor cutoff rises over a series of steps, and cooler regions are extinguished as that floor climbs, while surviving hotspots also decay in intensity. This is `dissipate_heat`, and it runs twice per induction cycle, on two different inputs and for two different purposes: the first pass runs on the raw centroid heat, before enrichment, to cull the bulk of false positives early; the second pass runs after enrichment, on its sharper, patch-filtered heat, to separate distinct instances and reduce semantic bleed between neighboring regions.
 
-What survives the full cycle of induction, enrichment, and dissipation is not the whole heat field. It is only the regions whose signal was strong and coherent enough to remain once the process settles, in the same way that only the driftwood grounded firmly enough survives an outgoing tide, or only the embers with enough remaining fuel are still glowing once a fire dies down.
+What survives the full cycle of induction, enrichment, and dissipation is not the whole heat field. It is only the regions whose signal was strong and coherent enough to remain once the process settles.
 
 ## Output
 
-The output of the full induction cycle is a single continuous heat map over the target image: a per-patch intensity grid, normalized to [0, 1], with everything below the settled floor already extinguished to zero. There is no downstream segmentation or bounding-box step — what you get is the heat field itself, not masks or boxes derived from it.
+The output of the full induction cycle is a single continuous heat map over the target image: a per-patch intensity grid, normalized to [0.0, 1.0], with everything below the settled floor already extinguished to zero. There is no downstream segmentation or bounding-box step, but instead what you get is the heat field itself, not masks or boxes derived from it.
 
 ## Running the demo harness
 
