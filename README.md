@@ -32,7 +32,7 @@ The output of the full induction cycle is a single continuous heat map over the 
 
 ## Running the demo harness
 
-The harness in `demo/harness` is the fastest way to see the algorithm work end to end. It serves two images side by side. Lasso a region on the left image to define a class, and the right image streams back a live heatmap as it settles.
+The harness in `demo` is the fastest way to see the algorithm work end to end. It serves two images side by side. Lasso a region on the left image to define a class, and the right image streams back a live heatmap as it settles.
 
 ```
 pip install -r requirements.txt   # fastapi, torch, transformers, scipy, pillow, matplotlib
