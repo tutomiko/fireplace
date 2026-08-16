@@ -1,4 +1,4 @@
-![Demo](demo/demo1.gif)
+![Demo](demo/media/demo1.gif)
 
 # Feature Island Induction From A Semantically Rich Ocean
 
@@ -8,7 +8,7 @@ This repository implements that idea as an open world heatmap generator, approac
 
 Read the code before taking any of this on faith. The behavior described below is not aspirational, it is what `src/fireplace` actually does.
 
-![Demo](demo/demo2.gif)
+![Demo](demo/media/demo2.gif)
 
 ## What problem this solves
 
