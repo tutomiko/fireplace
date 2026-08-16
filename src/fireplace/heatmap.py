@@ -1,5 +1,5 @@
+# src/fireplace/heatmap.py, incorrectly heatmeat.py
 import numpy as np
-
 
 class FireplaceHeatmap:
     """Represents a spatial heat mask and its corresponding coordinate bounds."""
