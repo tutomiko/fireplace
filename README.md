@@ -30,30 +30,13 @@ What survives the full cycle of induction, enrichment, and dissipation is not th
 
 The output of the full induction cycle is a single continuous heat map over the target image: a per-patch intensity grid, normalized to [0, 1], with everything below the settled floor already extinguished to zero. There is no downstream segmentation or bounding-box step — what you get is the heat field itself, not masks or boxes derived from it.
 
-## Repository layout
-
-```
-src/fireplace/
-  inductor.py   Fireplace class: induction, enrichment, dissipation
-  heatmap.py    FireplaceHeatmap: the settled heat mask and its bounds
-  __init__.py   Public exports
-
-demo/
-  harness/      A FastAPI + DINOv2 demo harness with a browser UI
-                for lassoing a reference image and streaming the
-                resulting heat map onto a second image in real time
-
-tests/
-  test_inductor.py   Unit tests against Fireplace / FireplaceHeatmap
-```
-
 ## Running the demo harness
 
-The harness in `demo/harness` is the fastest way to see the algorithm work end to end. It serves two images side by side. Lasso a region on the left image to define a class, and the right image streams back a live heat map as it settles.
+The harness in `demo/harness` is the fastest way to see the algorithm work end to end. It serves two images side by side. Lasso a region on the left image to define a class, and the right image streams back a live heatmap as it settles.
 
 ```
 pip install -r requirements.txt   # fastapi, torch, transformers, scipy, pillow, matplotlib
-python demo/harness/server.py
+python demo/server.py
 ```
 
 The first request downloads DINOv2 base weights, so expect a pause on first run.
@@ -66,3 +49,10 @@ Two parameters govern how much of the heat field survives.
 - `decay_threshold`: the similarity and heat floor used during both enrichment and dissipation. Lower values are more permissive and leave more of the image lit. Higher values are stricter and leave less. Defaults to `0.2`.
 
 Both are exposed as sliders in the test harness, and both are passed straight through to `Fireplace.set_decay` and `Fireplace.set_decay_threshold`.
+
+As a developer's note, the decay itself is intended to be 0.01 (1%) but was made configurable for experimentation, while decay_threshold should be dynamically adjusted based on how well we know the class, but that is not a problem this algorithm attempts to solve. 
+
+As for the images, you can swap your own images in and restart the server, and it will automatically compute the DINOv2 embeddings for both images.
+
+DISCLAIMER: the image files in the demo are non-proprietary, AI-generated generic street view images that are intentionally crowded and cluttered with similar objects for the purposes of the demo.
+
