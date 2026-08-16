@@ -14,7 +14,13 @@ Read the code before taking any of this on faith. The behavior described below i
 
 Traditional object detectors are trained against a fixed, closed set of classes. If a class was not in the training data, the model has no way to detect it. This project takes a different approach.
 
-In the demo harness, the user defines a class at request time, not at training time, by lassoing region(s) of interest on a reference image. The system embeds both the reference image [left] and the target image with a self-supervised vision transformer (DINOv2-b), then uses the embedding similarity between the lassoed region and every patch of the target image [right] to build a heat distribution over the target. No fixed taxonomy, no retraining, no closed label set. The class is whatever the user points at.
+In the demo harness, the user defines a class at request time, not at training time, by lassoing region(s) of interest on a reference image. The system embeds both the reference image [left] and the target image with a self-supervised vision transformer (DINOv2-b), then uses the embedding similarity between the lassoed region and every patch of the target image [right] to build a heat distribution over the target. No fixed taxonomy, no retraining, no closed label set. The class is whatever the user points at. The more classes you collect [lasso the same class of thing] the more precise the algorithm becomes in the context of that class, for that session.
+
+Testing the demo, you will notice that tight lassos produce tight islands on the heatmap, which in turn translate directly to tight bounding boxes. These bounding boxes hand us options:
+- We can aim a general segmentation model (e.g. SAM2) or a saliency model (such as U2Net) in this region to produce a very accurate mask.
+- We can deform a reference mask onto the bounding box area guided by the rough mask from the heatmap, quite easily so if we have relative depth for the reference mask and the target area, from a model such as DepthAnything2/3.
+- We can tweak the patch density of the embedding space to produce variably accurate masks from the heatmap itself.
+
 
 ## The thermodynamics framing
 
