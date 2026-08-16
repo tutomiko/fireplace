@@ -1,6 +1,6 @@
 # Feature Island Induction From A Semantically Rich Ocean
 
-Whether beneath lowering tides or amidst embers slowly burning away, what remains are only the regions grounded enough to ensure, distilled into their concrete form through the surrounding semantic structure.
+Whether beneath lowering tides or amidst embers slowly burning away, what remains are only the regions grounded enough to endure, distilled into their concrete form through the surrounding semantic structure.
 
 This repository implements that idea as an open world class detection algorithm, approached through the lens of thermodynamics rather than a fixed classifier head. The implementation began as an observation about watching embers cool in a fireplace, and the code kept the metaphor: heat, decay, dissipation, and what is left behind once the fire settles. The heatmap however resembled something more like an ocean, so that's where the more grandiose name is derived from.
 
