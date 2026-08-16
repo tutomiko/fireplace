@@ -12,6 +12,7 @@ Read the code before taking any of this on faith. The behavior described below i
 
 ![Demo](demo/media/demo3.gif)
 
+![Demo](demo/media/demo4.gif)
 
 ## What problem this solves
 
