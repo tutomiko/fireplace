@@ -56,5 +56,5 @@ As a developer's note, decay_threshold should be dynamically adjusted based on h
 
 As for the images, you can swap your own images in and restart the server, and it will automatically compute the DINOv2 patch embeddings for both images, so long as those images are named left.png and right.png, respectively.
 
-DISCLAIMER: the image files in the demo are non-proprietary, AI-generated generic street view images that are intentionally crowded and cluttered with similar objects for the purposes of the demo.
+DISCLAIMER: the image files in the demo are non-proprietary, AI-generated generic images that are intentionally crowded and cluttered with similar objects for the purposes of the demo.
 
