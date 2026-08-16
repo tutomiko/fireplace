@@ -9,12 +9,15 @@ This repository implements that idea as an open world heatmap generator, approac
 Read the code before taking any of this on faith. The behavior described below is not aspirational, it is what `src/fireplace` actually does.
 
 ![Demo](demo/media/demo2.gif)
+
 // color-invariant
 
 ![Demo](demo/media/demo3.gif)
+
 // lighting-invariant
 
 ![Demo](demo/media/demo4.gif)
+
 // effectively rejects distractions (only the green apple [non-decayed] on the target image retains heat)
 
 ## What problem this solves
