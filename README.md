@@ -6,7 +6,7 @@ Whether beneath lowering tides or amidst embers slowly burning away, what remain
 
 This repository implements that idea as an open world heatmap generator, approached through the lens of thermodynamics rather than a fixed classifier head. The implementation began as an observation about watching embers cool in a fireplace, and the code kept the metaphor: heat, decay, dissipation, and what is left behind once the fire settles. The heatmap however resembled something more like an ocean, so that's where the more grandiose name is derived from.
 
-Read the code before taking any of this on faith. The behavior described below is not aspirational, it is what `src/fireplace` actually does.
+Read the code before taking any of this on faith. The behavior described below is not aspirational, it is what `src/fireplace` actually does. Also please do note that the heatmap has to settle [post-dissipation] so initially, you will see false positives, and then watch them vanish away.
 
 ![Demo](demo/media/demo2.gif)
 
