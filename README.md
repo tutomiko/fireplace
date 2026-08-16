@@ -52,9 +52,9 @@ Two parameters govern how much of the heat field survives.
 
 Both are exposed as sliders in the test harness, and both are passed straight through to `Fireplace.set_decay` and `Fireplace.set_decay_threshold`.
 
-As a developer's note, the decay itself is intended to be 0.01 (1%) but was made configurable for experimentation, while decay_threshold should be dynamically adjusted based on how well we know the class, but that is not a problem this algorithm attempts to solve. 
+As a developer's note, decay_threshold should be dynamically adjusted based on how well we know the class, but that is not a problem this algorithm attempts to solve. 
 
-As for the images, you can swap your own images in and restart the server, and it will automatically compute the DINOv2 embeddings for both images.
+As for the images, you can swap your own images in and restart the server, and it will automatically compute the DINOv2 patch embeddings for both images, so long as those images are named left.png and right.png, respectively.
 
 DISCLAIMER: the image files in the demo are non-proprietary, AI-generated generic street view images that are intentionally crowded and cluttered with similar objects for the purposes of the demo.
 
