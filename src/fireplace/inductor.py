@@ -1,13 +1,10 @@
-# src/fireplace/inductor.py
-import logging
 import time
-import uuid
+import cv2
 import numpy as np
 from typing import Callable, Optional
 
 from .heatmap import FireplaceHeatmap
 
-logger = logging.getLogger("fireplace.convergence")
 
 class Fireplace:
     """
@@ -30,12 +27,6 @@ class Fireplace:
         self._embedding_space: Optional[np.ndarray] = None
         self._current_heat: Optional[np.ndarray] = None
         self._bounds: list[float] = [0.0, 0.0, 1.0, 1.0]
-        # TEMP convergence-finding instrumentation: a short id assigned once
-        # per induce() call, included on every convergence log line so
-        # concurrent requests (see harness server.py, which runs induce() on
-        # a background thread per /heatmap call) can be told apart even when
-        # they share identical decay/decay_threshold values.
-        self._run_id: str = "-"
 
     def set_class_precomputed_centroids_provider(self, callback: Callable[[], np.ndarray]) -> None:
         self._centroids_provider = callback
@@ -63,7 +54,6 @@ class Fireplace:
         grid = self._current_heat
         nonzero = grid[grid > 0]
 
-        # Apply the exact min-max normalization logic from the orchestrator's payload formatting
         if nonzero.size == 0:
             normalized = grid.copy()
         else:
@@ -154,38 +144,13 @@ class Fireplace:
         initial_heat = self._current_heat.copy()
         num_steps = 5
 
-        # TEMP convergence-finding instrumentation, same rationale as
-        # dissipate_heat above: this is a linear interpolation from
-        # initial_heat to filtered_similarity, so l2_delta_frac here should
-        # actually be near-constant per step by construction (linear blend =
-        # equal-sized steps) -- logging it anyway to confirm that assumption
-        # rather than assume it, and because nonzero_frac may still reveal
-        # early convergence if filtered_similarity is sparse.
-        prev_grid = initial_heat
-
         # Stream progressive heat dispersal step-by-step
         for step in range(1, num_steps + 1):
             alpha = step / float(num_steps)
-            
+
             # Smooth transition from original wide heat map to pinpoint patch-matched heatmap
             step_grid = initial_heat * ((1.0 - alpha) + (alpha * filtered_similarity))
 
-            prev_norm = float(np.linalg.norm(prev_grid))
-            l2_delta = float(np.linalg.norm(step_grid - prev_grid))
-            l2_delta_frac = l2_delta / prev_norm if prev_norm > 0 else 0.0
-            nonzero_frac = float(np.count_nonzero(step_grid)) / step_grid.size if step_grid.size else 0.0
-
-            logger.info(
-                "enrich_heat run=%s decay=%.4f decay_threshold=%.4f "
-                "step=%d/%d max=%.6f mean=%.6f l2_delta=%.6f "
-                "l2_delta_frac=%.6f nonzero_frac=%.4f",
-                self._run_id, self._decay, self._decay_threshold,
-                step, num_steps,
-                float(np.max(step_grid)), float(np.mean(step_grid)),
-                l2_delta, l2_delta_frac, nonzero_frac,
-            )
-
-            prev_grid = step_grid
             self._current_heat = step_grid
             self._notify_change()
 
@@ -194,83 +159,168 @@ class Fireplace:
         Progressively elevates the floor cutoff so cooler heat regions dissolve away
         across multiple simulated steps.
 
-        `phase` is a label for convergence logging only (e.g. "pre_enrich" /
-        "post_enrich") -- dissipate_heat is called twice per induce() on very
-        different inputs (raw centroid heat vs enrich_heat's filtered
-        output), and those two calls converge differently, so the log needs
-        to distinguish them rather than lump both under "dissipate_heat".
+        `phase` labels which point in the induce() lifecycle this call
+        represents (e.g. "pre_enrich" / "post_enrich") -- dissipate_heat is
+        called twice per induce() on different inputs (raw centroid heat vs
+        enrich_heat's filtered output).
         """
         if self._current_heat is None:
             return
-            
+
         base_grid = self._current_heat.copy()
         max_heat_before = float(np.max(base_grid)) if base_grid.size > 0 else 0.0
-        
+
         if max_heat_before <= 0:
             self._notify_change()
             return
-            
+
         target_cutoff = self._decay_threshold * max_heat_before
         dissipate_steps = 20
-
-        # TEMP convergence-finding instrumentation: log per-step metrics so we
-        # can find the actual step count where the grid stops meaningfully
-        # changing, instead of the hardcoded dissipate_steps = 20 above.
-        # Metrics logged per step:
-        #   max/mean heat        - overall grid intensity
-        #   l2_delta              - ||step_grid - previous_grid||, absolute
-        #                           step-over-step change
-        #   l2_delta_frac         - l2_delta normalized by previous step's L2
-        #                           norm, so it's comparable across images/scales
-        #   nonzero_frac          - fraction of grid still above 0 (culling progress)
-        # Convergence candidate: the step where l2_delta_frac first drops below
-        # some small epsilon (e.g. 1e-3) and stays there -- pick dissipate_steps
-        # as that step + a small safety margin, once we've seen real numbers.
-        prev_grid = base_grid
 
         # Stream smooth visible dissipation steps over time
         for step in range(1, dissipate_steps + 1):
             progress = step / dissipate_steps
             current_cutoff = progress * target_cutoff
             step_grid = base_grid.copy()
-            
+
             # Apply exponential contract on lower intensities so cooler regions fade faster
             step_grid = np.where(step_grid < current_cutoff, 0.0, step_grid)
-            
+
             # Smoothly decay intensity values of remaining hotspots
             step_grid *= (1.0 - (self._decay * progress))
 
-            prev_norm = float(np.linalg.norm(prev_grid))
-            l2_delta = float(np.linalg.norm(step_grid - prev_grid))
-            l2_delta_frac = l2_delta / prev_norm if prev_norm > 0 else 0.0
-            nonzero_frac = float(np.count_nonzero(step_grid)) / step_grid.size if step_grid.size else 0.0
-
-            logger.info(
-                "dissipate_heat run=%s phase=%s decay=%.4f decay_threshold=%.4f "
-                "step=%d/%d max=%.6f mean=%.6f l2_delta=%.6f "
-                "l2_delta_frac=%.6f nonzero_frac=%.4f",
-                self._run_id, phase, self._decay, self._decay_threshold,
-                step, dissipate_steps,
-                float(np.max(step_grid)), float(np.mean(step_grid)),
-                l2_delta, l2_delta_frac, nonzero_frac,
-            )
-
-            prev_grid = step_grid
             self._current_heat = step_grid
             self._notify_change()
 
+    def smooth_heatmap(
+        self,
+        step_percent: float = 0.01,
+        max_iterations: int = 150,
+        max_cell_heat: float = 1.0,
+    ) -> None:
+        """
+        Optional refinement pass: iteratively redistributes heat from hot
+        cells toward their cooler, inward-facing neighbors within each
+        connected island, smoothing out jagged single-cell spikes.
+
+        This is not part of the induce() lifecycle -- callers opt in by
+        invoking it explicitly after induce() (or at any other point) if
+        they want the extra refinement.
+        """
+        if self._current_heat is None:
+            return
+
+        self._current_heat = self._smooth_and_clean_heatmap(
+            self._current_heat,
+            step_percent=step_percent,
+            max_iterations=max_iterations,
+            max_cell_heat=max_cell_heat,
+        )
+        self._notify_change()
+
+    @staticmethod
+    def _smooth_and_clean_heatmap(
+        heat_grid: np.ndarray,
+        step_percent: float = 0.01,
+        max_iterations: int = 150,
+        max_cell_heat: float = 1.0,
+    ) -> np.ndarray:
+        if heat_grid is None or heat_grid.size == 0 or heat_grid.shape[0] < 3 or heat_grid.shape[1] < 3:
+            return heat_grid
+
+        grid = heat_grid.astype(np.float32, copy=True)
+        h, w = grid.shape
+
+        grid_max = float(np.max(grid))
+        cap = max(max_cell_heat, grid_max) if grid_max > 0 else max_cell_heat
+
+        for _ in range(max_iterations):
+            active_mask = grid > 1e-6
+            if not np.any(active_mask):
+                break
+
+            num_labels, labels = cv2.connectedComponents(active_mask.astype(np.uint8), connectivity=8)
+
+            island_max_map = np.zeros_like(grid, dtype=np.float32)
+            for label in range(1, num_labels):
+                island_mask = (labels == label)
+                i_max = float(np.max(grid[island_mask])) if np.any(island_mask) else 0.0
+                island_max_map[island_mask] = i_max
+
+            grid_next = grid.copy()
+            transfers = 0
+
+            ys, xs = np.nonzero(active_mask)
+            for y, x in zip(ys, xs):
+                val = grid[y, x]
+                if val <= 1e-6:
+                    continue
+
+                i_max = island_max_map[y, x]
+                if i_max <= 1e-6:
+                    continue
+
+                rel_heat_ratio = val / i_max
+                dynamic_flow_scale = rel_heat_ratio * rel_heat_ratio
+
+                min_y, max_y = max(0, y - 1), min(h, y + 2)
+                min_x, max_x = max(0, x - 1), min(w, x + 2)
+
+                highest_heat_val = -1.0
+                highest_heat_coord = None
+                neighbors = []
+
+                for ny in range(min_y, max_y):
+                    for nx in range(min_x, max_x):
+                        if ny == y and nx == x:
+                            continue
+                        n_val = grid[ny, nx]
+                        neighbors.append((ny, nx, n_val))
+                        if n_val > highest_heat_val:
+                            highest_heat_val = n_val
+                            highest_heat_coord = (ny, nx)
+
+                if highest_heat_coord is None or not neighbors:
+                    continue
+
+                dy = np.sign(highest_heat_coord[0] - y)
+                dx = np.sign(highest_heat_coord[1] - x)
+
+                inward_candidates = []
+                for ny, nx, n_val in neighbors:
+                    dot = (ny - y) * dy + (nx - x) * dx
+                    if dot > 0:
+                        inward_candidates.append((ny, nx, n_val))
+
+                if not inward_candidates:
+                    inward_candidates = neighbors
+
+                target_coord = None
+                min_cand_val = float("inf")
+                for ny, nx, n_val in inward_candidates:
+                    if grid_next[ny, nx] < cap and n_val < min_cand_val:
+                        min_cand_val = n_val
+                        target_coord = (ny, nx)
+
+                if target_coord is not None and min_cand_val < val:
+                    ty, tx = target_coord
+                    available_capacity = cap - grid_next[ty, tx]
+                    if available_capacity > 1e-6:
+                        amount = min(val * step_percent * dynamic_flow_scale, available_capacity)
+                        if amount > 1e-7:
+                            grid_next[y, x] -= amount
+                            grid_next[ty, tx] += amount
+                            transfers += 1
+
+            grid = grid_next
+            if transfers == 0:
+                break
+
+        return grid.astype(heat_grid.dtype, copy=False)
+
     def induce(self) -> None:
         """Executes the complete heat creation lifecycle synchronously."""
-        # TEMP convergence-finding instrumentation: fresh run id per induce()
-        # call so concurrent requests' log lines can be told apart.
-        self._run_id = uuid.uuid4().hex[:8]
-        logger.info(
-            "induce run=%s BEGIN decay=%.4f decay_threshold=%.4f",
-            self._run_id, self._decay, self._decay_threshold,
-        )
         self.form_centroid_heatmap()
-        # Orchestrator runs dissipation prior to enrichment to cull floor heat first
         self.dissipate_heat(phase="pre_enrich")
         self.enrich_heat()
         self.dissipate_heat(phase="post_enrich")
-        logger.info("induce run=%s END", self._run_id)
